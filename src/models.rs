@@ -17,6 +17,7 @@ pub(crate) struct ResInitialize {
     pub(crate) language: String,
 }
 
+#[derive(Serialize)]
 pub(crate) struct Item {
     pub(crate) id: i64,
     pub(crate) seller_id: i64,
@@ -27,7 +28,9 @@ pub(crate) struct Item {
     pub(crate) description: String,
     pub(crate) image_name: String,
     pub(crate) category_id: i32,
+    #[serde(skip)]
     pub(crate) created_at: Time,
+    #[serde(skip)]
     pub(crate) updated_at: Time,
 }
 
@@ -61,10 +64,56 @@ impl<'c> FromRow<'c, MySqlRow<'c>> for Item {
 }
 
 #[derive(Serialize)]
+pub(crate) struct User {
+    id: i64,
+    account_name: String,
+    #[serde(skip)]
+    hashed_password: Vec<u8>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    address: Option<String>,
+    num_sell_items: i32,
+    #[serde(skip)]
+    last_bump: Time,
+    #[serde(skip)]
+    created_at: Time,
+}
+
+impl<'c> FromRow<'c, MySqlRow<'c>> for User {
+    fn from_row(row: &MySqlRow) -> Result<Self, sqlx::Error> {
+        let id: i64 = row.try_get("id")?;
+        let account_name: String = row.try_get("account_name")?;
+        let hashed_password: Vec<u8> = row.try_get("hashed_password")?;
+        let address: Option<String> = row.try_get("address")?;
+        let num_sell_items: i32 = row.try_get("num_sell_items")?;
+        let last_bump: Time = row.try_get("last_bump")?;
+        let created_at: Time = row.try_get("created_at")?;
+        Ok(User {
+            id,
+            account_name,
+            hashed_password,
+            address,
+            num_sell_items,
+            last_bump,
+            created_at,
+        })
+    }
+}
+
+#[derive(Serialize)]
 pub(crate) struct UserSimple {
     pub(crate) id: i64,
     pub(crate) account_name: String,
     pub(crate) num_sell_items: i32,
+}
+
+impl From<User> for UserSimple {
+    fn from(user: User) -> Self {
+        UserSimple {
+            id: user.id,
+            account_name: user.account_name,
+            num_sell_items: user.num_sell_items,
+        }
+    }
 }
 
 #[derive(Serialize)]
@@ -86,12 +135,15 @@ pub(crate) struct Category {
     pub(crate) id: i32,
     pub(crate) parent_id: i32,
     pub(crate) category_name: String,
-    pub(crate) parent_category_name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) parent_category_name: Option<String>,
 }
 
 #[derive(Serialize)]
 pub(crate) struct ResNewItems {
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) root_category_id: Option<i32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) root_category_name: Option<String>,
     pub(crate) has_next: bool,
     pub(crate) items: Vec<ItemSimple>,

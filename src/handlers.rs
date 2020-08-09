@@ -1,6 +1,6 @@
 use crate::consts;
 use crate::models::{
-    Category, Item, ItemSimple, ReqInitialize, ResInitialize, ResNewItems, UserSimple,
+    Category, Item, ItemSimple, ReqInitialize, ResInitialize, ResNewItems, User, UserSimple,
 };
 use crate::AppState;
 use anyhow::Result as AnyhowResult;
@@ -180,8 +180,19 @@ pub(crate) async fn get_new_items(req: Request) -> TideResult<Body> {
     Ok(Body::from_json(&res)?)
 }
 
-async fn get_user_simple_by_id(conn: &MySqlPool, seller_id: i64) -> AnyhowResult<UserSimple> {
-    todo!()
+async fn get_user_simple_by_id(conn: &MySqlPool, user_id: i64) -> AnyhowResult<UserSimple> {
+    let user: User = sqlx::query_as(
+        r"
+        SELECT
+        FROM `users`
+        WHERE `id` = ?
+        ",
+    )
+    .bind(user_id)
+    .fetch_one(conn)
+    .await?;
+
+    Ok(user.into())
 }
 
 async fn get_category_by_id(conn: &MySqlPool, category_id: i32) -> AnyhowResult<Category> {
