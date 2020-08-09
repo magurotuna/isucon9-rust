@@ -1,6 +1,5 @@
 use std::env;
 use anyhow::{Result, Context};
-use async_std::prelude::*;
 
 mod consts {
     use std::time::Duration;
@@ -44,7 +43,7 @@ mod consts {
 
 #[async_std::main]
 async fn main() -> Result<()> {
-    env_logger::init();
+    tide::log::start();
 
     let host = env::var("MYSQL_HOST").unwrap_or_else(|_| "127.0.0.1".to_string());
     let port = env::var("MYSQL_PORT").unwrap_or_else(|_| "3306".to_string());
@@ -55,10 +54,28 @@ async fn main() -> Result<()> {
 
     let dsn = format!("{}:{}@tcp({}:{})/{}?charset=utf8mb4&parseTime=true&loc=Local", user, password, host, port, dbname);
     let conn = connect(&dsn).await?;
+    let state = AppState { conn };
+
+    let mut app = tide::with_state(state);
+    // API
+    // TODO
+
+    // Frontend
+    app.at("/").get(|_| async {
+        let html = include_str!("../public/index.html");
+        Ok(html)
+    });
+
+    app.listen("127.0.0.1:8080").await?;
     Ok(())
 }
 
 async fn connect(url: &str) -> Result<sqlx::MySqlPool> {
     let pool = sqlx::Pool::new(url).await?;
     Ok(pool)
+}
+
+#[derive(Clone)]
+struct AppState {
+    conn: sqlx::MySqlPool,
 }
