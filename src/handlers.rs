@@ -80,8 +80,8 @@ pub(crate) async fn get_new_items(req: Request) -> TideResult<Body> {
     #[derive(Deserialize, Default)]
     #[serde(default)]
     struct Query {
-        item_id: u64,
-        created_at: u64,
+        item_id: Option<u64>,
+        created_at: Option<u64>,
     }
     let query: Query = req.query().map_err(with_status(StatusCode::BadRequest))?;
     let Query {
@@ -90,62 +90,65 @@ pub(crate) async fn get_new_items(req: Request) -> TideResult<Body> {
     } = query;
 
     let conn = &req.state().conn;
-    let items: Vec<Item> = if item_id > 0 && created_at > 0 {
-        sqlx::query_as(
-            r"
-            SELECT 
-                id,
-                seller_id,
-                buyer_id,
-                status,
-                name,
-                price,
-                description,
-                image_name,
-                category_id,
-                created_at,
-                updated_at
-            FROM `items`
-            WHERE `status` IN (?,?)
-            AND (`created_at` < ? OR (`created_at` <= ? AND `id` < ?))
-            ORDER BY `created_at` DESC, `id` DESC
-            LIMIT ?
-            ",
-        )
-        .bind(consts::ITEM_STATUS_ON_SALE)
-        .bind(consts::ITEM_STATUS_SOLD_OUT)
-        .bind(created_at)
-        .bind(created_at)
-        .bind(item_id)
-        .bind(consts::ITEMS_PER_PAGE + 1)
-        .fetch_all(conn)
-        .await?
-    } else {
-        sqlx::query_as(
-            r"
-            SELECT 
-                id,
-                seller_id,
-                buyer_id,
-                status,
-                name,
-                price,
-                description,
-                image_name,
-                category_id,
-                created_at,
-                updated_at
-            FROM `items`
-            WHERE `status` IN (?,?)
-            ORDER BY `created_at` DESC, `id` DESC
-            LIMIT ?
-            ",
-        )
-        .bind(consts::ITEM_STATUS_ON_SALE)
-        .bind(consts::ITEM_STATUS_SOLD_OUT)
-        .bind(consts::ITEMS_PER_PAGE + 1)
-        .fetch_all(conn)
-        .await?
+    let items: Vec<Item> = match (item_id, created_at) {
+        (Some(item_id), Some(created_at)) => {
+            sqlx::query_as(
+                r"
+                SELECT 
+                    id,
+                    seller_id,
+                    buyer_id,
+                    status,
+                    name,
+                    price,
+                    description,
+                    image_name,
+                    category_id,
+                    created_at,
+                    updated_at
+                FROM `items`
+                WHERE `status` IN (?,?)
+                AND (`created_at` < ? OR (`created_at` <= ? AND `id` < ?))
+                ORDER BY `created_at` DESC, `id` DESC
+                LIMIT ?
+                ",
+            )
+            .bind(consts::ITEM_STATUS_ON_SALE)
+            .bind(consts::ITEM_STATUS_SOLD_OUT)
+            .bind(created_at)
+            .bind(created_at)
+            .bind(item_id)
+            .bind(consts::ITEMS_PER_PAGE + 1)
+            .fetch_all(conn)
+            .await?
+        }
+        _ => {
+            sqlx::query_as(
+                r"
+                SELECT 
+                    id,
+                    seller_id,
+                    buyer_id,
+                    status,
+                    name,
+                    price,
+                    description,
+                    image_name,
+                    category_id,
+                    created_at,
+                    updated_at
+                FROM `items`
+                WHERE `status` IN (?,?)
+                ORDER BY `created_at` DESC, `id` DESC
+                LIMIT ?
+                ",
+            )
+            .bind(consts::ITEM_STATUS_ON_SALE)
+            .bind(consts::ITEM_STATUS_SOLD_OUT)
+            .bind(consts::ITEMS_PER_PAGE + 1)
+            .fetch_all(conn)
+            .await?
+        }
     };
 
     let mut item_simples = Vec::new();
