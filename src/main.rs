@@ -35,7 +35,7 @@ async fn main() -> Result<()> {
     app.at("/initialize").post(handlers::post_initialize);
     app.at("/new_items.json").get(handlers::get_new_items);
     app.at("/new_items/:root_category_id.json")
-        .get(handlers::get_root_category_id);
+        .get(handlers::get_new_category_items);
     app.at("users/transactions.json")
         .get(handlers::get_transactions);
     app.at("/items/:item_id.json").get(handlers::get_item_id);

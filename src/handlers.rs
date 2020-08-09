@@ -3,11 +3,12 @@ use crate::models::{
     Category, Item, ItemSimple, ReqInitialize, ResInitialize, ResNewItems, User, UserSimple,
 };
 use crate::AppState;
-use anyhow::Result as AnyhowResult;
+use anyhow::{Context, Result as AnyhowResult};
 use async_recursion::async_recursion;
+use regex::Regex;
 use serde::Deserialize;
-use sqlx::mysql::MySqlQueryAs;
-use sqlx::MySqlPool;
+use sqlx::mysql::{MySqlQueryAs, MySqlRow};
+use sqlx::{MySqlPool, Row as _};
 use std::env;
 use std::io::{self, Write};
 use std::process::Command;
@@ -181,7 +182,7 @@ pub(crate) async fn get_new_items(req: Request) -> TideResult<Body> {
     Ok(Body::from_json(&res)?)
 }
 
-async fn get_user_simple_by_id(conn: &MySqlPool, user_id: i64) -> AnyhowResult<UserSimple> {
+async fn get_user_simple_by_id(conn: &MySqlPool, user_id: u64) -> AnyhowResult<UserSimple> {
     let user: User = sqlx::query_as(
         r"
         SELECT
@@ -204,7 +205,7 @@ async fn get_user_simple_by_id(conn: &MySqlPool, user_id: i64) -> AnyhowResult<U
 }
 
 #[async_recursion]
-async fn get_category_by_id(conn: &MySqlPool, category_id: i32) -> AnyhowResult<Category> {
+async fn get_category_by_id(conn: &MySqlPool, category_id: u32) -> AnyhowResult<Category> {
     let mut category: Category = sqlx::query_as(
         r"
         SELECT
@@ -231,8 +232,152 @@ fn get_image_url(image_name: String) -> String {
     format!("/upload/{}", image_name)
 }
 
-pub(crate) async fn get_root_category_id(req: Request) -> TideResult<String> {
-    todo!()
+pub(crate) async fn get_new_category_items(req: Request) -> TideResult<Body> {
+    let re = Regex::new(r"^(.+)\.json$").unwrap();
+    let param: String = req.param("root_category_id.json")?;
+    let root_category_id = re
+        .captures(param.as_str())
+        .and_then(|cap| cap.get(1))
+        .and_then(|it| it.as_str().parse::<u32>().ok())
+        .context("incorrect category id")
+        .map_err(with_status(StatusCode::BadRequest))?;
+
+    let conn = &req.state().conn;
+
+    let root_category = get_category_by_id(conn, root_category_id).await?;
+    if root_category.parent_id != 0 {
+        return Err(tide::Error::from_str(
+            StatusCode::NotFound,
+            "category not found",
+        ));
+    }
+
+    let category_ids = sqlx::query("SELECT id FROM `categories` WHERE parent_id=?")
+        .bind(root_category.id)
+        .try_map(|row: MySqlRow| {
+            let id = row.try_get::<u32, _>("id")?;
+            Ok(id.to_string())
+        })
+        .fetch_all(conn)
+        .await?
+        .join(",");
+
+    #[derive(Deserialize, Default)]
+    #[serde(default)]
+    struct Query {
+        item_id: Option<u64>,
+        created_at: Option<u64>,
+    }
+    let query: Query = req.query().map_err(with_status(StatusCode::BadRequest))?;
+    let Query {
+        item_id,
+        created_at,
+    } = query;
+
+    let items: Vec<Item> = match (item_id, created_at) {
+        (Some(item_id), Some(created_at)) => {
+            // [How to bind Vec<i64> arguments for IN operator? · Issue #528 · launchbadge/sqlx](https://github.com/launchbadge/sqlx/issues/528)
+            let sql = format!(
+                r"
+                SELECT
+                    id,
+                    seller_id,
+                    buyer_id,
+                    status,
+                    name,
+                    price,
+                    description,
+                    image_name,
+                    category_id,
+                    created_at,
+                    updated_at
+                FROM `items`
+                WHERE `status` IN (?,?)
+                AND `category_id` IN ({})
+                AND (`created_at` < ? OR (`created_at` <= ? AND `id` < ?))
+                ORDER BY `created_at` DESC, `id` DESC
+                LIMIT ?
+                ",
+                &category_ids
+            );
+            sqlx::query_as(&sql)
+                .bind(consts::ITEM_STATUS_ON_SALE)
+                .bind(consts::ITEM_STATUS_SOLD_OUT)
+                .bind(created_at)
+                .bind(created_at)
+                .bind(item_id)
+                .bind(consts::ITEMS_PER_PAGE + 1)
+                .fetch_all(conn)
+                .await?
+        }
+        _ => {
+            let sql = format!(
+                r"
+                SELECT
+                    id,
+                    seller_id,
+                    buyer_id,
+                    status,
+                    name,
+                    price,
+                    description,
+                    image_name,
+                    category_id,
+                    created_at,
+                    updated_at
+                FROM `items`
+                WHERE `status` IN (?,?)
+                AND category_id IN ({})
+                ORDER BY `created_at` DESC, `id` DESC
+                LIMIT ?
+                ",
+                &category_ids
+            );
+            sqlx::query_as(&sql)
+                .bind(consts::ITEM_STATUS_ON_SALE)
+                .bind(consts::ITEM_STATUS_SOLD_OUT)
+                .bind(consts::ITEMS_PER_PAGE + 1)
+                .fetch_all(conn)
+                .await?
+        }
+    };
+
+    let mut item_simples = Vec::new();
+    for item in items {
+        let seller = get_user_simple_by_id(conn, item.seller_id)
+            .await
+            .map_err(with_status(StatusCode::NotFound))?;
+        let category = get_category_by_id(conn, item.category_id)
+            .await
+            .map_err(with_status(StatusCode::NotFound))?;
+        item_simples.push(ItemSimple {
+            id: item.id,
+            seller_id: item.seller_id,
+            seller,
+            status: item.status,
+            name: item.name,
+            price: item.price,
+            image_url: get_image_url(item.image_name),
+            category_id: item.category_id,
+            category,
+            created_at: item.created_at.timestamp(),
+        })
+    }
+
+    let mut has_next = false;
+    if item_simples.len() > consts::ITEMS_PER_PAGE as usize {
+        has_next = true;
+        item_simples.truncate(consts::ITEMS_PER_PAGE as usize);
+    }
+
+    let res = ResNewItems {
+        root_category_id: Some(root_category.id),
+        root_category_name: Some(root_category.category_name),
+        items: item_simples,
+        has_next,
+    };
+
+    Ok(Body::from_json(&res)?)
 }
 
 pub(crate) async fn get_transactions(req: Request) -> TideResult<String> {
