@@ -1,6 +1,7 @@
 use std::time::Duration;
 
 pub(crate) const SESSION_NAME: &str = "session_isucari";
+pub(crate) const SESSION_SECRET: &str = "THIS_IS_SESSION_SECRET_KEY_FOR_ISUCARI_APP";
 
 pub(crate) const DEFAULT_PAYMENT_SERVICE_URL: &str = "http://localhost:5555";
 pub(crate) const DEFAULT_SHIPMENT_SERVICE_URL: &str = "http://localhost:7000";

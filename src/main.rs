@@ -1,8 +1,10 @@
 use anyhow::{Context, Result};
 use std::env;
+use tide::sessions::{MemoryStore, SessionMiddleware};
 
 mod consts;
 mod handlers;
+mod models;
 
 #[async_std::main]
 async fn main() -> Result<()> {
@@ -24,6 +26,11 @@ async fn main() -> Result<()> {
     let state = AppState { conn };
 
     let mut app = tide::with_state(state);
+    app.with(SessionMiddleware::new(
+        MemoryStore::new(),
+        consts::SESSION_SECRET.as_bytes(),
+    ));
+
     // API
     app.at("/initialize").post(handlers::post_initialize);
     app.at("/new_items.json").get(handlers::get_new_items);

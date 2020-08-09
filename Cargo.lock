@@ -880,6 +880,7 @@ dependencies = [
  "anyhow",
  "async-std",
  "log",
+ "serde",
  "sqlx",
  "tide",
 ]

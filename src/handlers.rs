@@ -1,10 +1,70 @@
+use crate::models::{ReqInitialize, ResInitialize};
+use crate::AppState;
 use std::env;
-use tide::{Body, Result};
+use std::io::{self, Write};
+use std::process::Command;
+use tide::{Body, Result, StatusCode};
 
-type Request = tide::Request<crate::AppState>;
+type Request = tide::Request<AppState>;
 
-pub(crate) async fn post_initialize(req: Request) -> Result<String> {
-    todo!()
+fn with_status<E>(status_code: StatusCode) -> impl FnOnce(E) -> tide::Error
+where
+    E: Into<tide::Error>,
+{
+    move |err: E| -> tide::Error {
+        let mut err = err.into();
+        err.set_status(status_code);
+        err
+    }
+}
+
+pub(crate) async fn post_initialize(mut req: Request) -> Result<Body> {
+    let body: ReqInitialize = req
+        .body_json()
+        .await
+        .map_err(with_status(StatusCode::BadRequest))?;
+
+    {
+        let output = Command::new("../sql/init.sh")
+            .output()
+            .map_err(with_status(StatusCode::InternalServerError))?;
+        let stdout = io::stdout();
+        let mut lock = stdout.lock();
+        lock.write_all(&output.stdout)
+            .map_err(with_status(StatusCode::InternalServerError))?;
+        lock.write_all(&output.stderr)
+            .map_err(with_status(StatusCode::InternalServerError))?;
+    }
+
+    let conn = &req.state().conn;
+    sqlx::query(
+        r"
+        INSERT INTO `configs` (`name`, `val`) VALUES (?, ?)
+        ON DUPLICATE KEY UPDATE `val` = VALUES(`val`)
+        ",
+    )
+    .bind("payment_service_url")
+    .bind(body.payment_service_url)
+    .execute(conn)
+    .await
+    .map_err(with_status(StatusCode::InternalServerError))?;
+    sqlx::query(
+        r"
+        INSERT INTO `configs` (`name`, `val`) VALUES (?, ?)
+        ON DUPLICATE KEY UPDATE `val` = VALUES(`val`)
+        ",
+    )
+    .bind("shipment_service_url")
+    .bind(body.shipment_service_url)
+    .execute(conn)
+    .await
+    .map_err(with_status(StatusCode::InternalServerError))?;
+
+    let res = ResInitialize {
+        campaign: 0,
+        language: "Rust".to_string(),
+    };
+    Ok(Body::from_json(&res)?)
 }
 
 pub(crate) async fn get_new_items(req: Request) -> Result<String> {
