@@ -1,3 +1,6 @@
+use std::env;
+use anyhow::{Result, Context};
+
 mod consts {
     use std::time::Duration;
 
@@ -38,6 +41,16 @@ mod consts {
     pub(crate) const BcryptCost: i32 = 10;
 }
 
-fn main() {
-    println!("Hello, world!");
+fn main() -> Result<()> {
+    env_logger::init();
+
+    let host = env::var("MYSQL_HOST").unwrap_or("127.0.0.1".to_string());
+    let port = env::var("MYSQL_PORT").unwrap_or("3306".to_string());
+    port.parse::<i32>().context("failed to read DB port number from an environment variable MYSQL_PORT.")?;
+    let user = env::var("MYSQL_USER").unwrap_or("isucari".to_string());
+    let dbname = env::var("MYSQL_DBNAME").unwrap_or("isucari".to_string());
+    let password = env::var("MYSQL_PASS").unwrap_or("isucari".to_string());
+
+    let dsn = format!("{}:{}@tcp({}:{})/{}?charset=utf8mb4&parseTime=true&loc=Local", user, password, host, port, dbname);
+    Ok(())
 }
