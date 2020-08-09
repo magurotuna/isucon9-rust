@@ -219,11 +219,10 @@ async fn get_category_by_id(conn: &MySqlPool, category_id: i32) -> AnyhowResult<
     .fetch_one(conn)
     .await?;
     if category.parent_id != 0 {
-        get_category_by_id(conn, category.parent_id)
+        category.parent_category_name = get_category_by_id(conn, category.parent_id)
             .await
-            .map(|parent_category| {
-                category.parent_category_name = Some(parent_category.category_name);
-            });
+            .map(|parent_category| Some(parent_category.category_name))
+            .unwrap_or(None);
     }
     Ok(category)
 }
