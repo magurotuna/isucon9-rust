@@ -139,6 +139,20 @@ pub(crate) struct Category {
     pub(crate) parent_category_name: Option<String>,
 }
 
+impl<'c> FromRow<'c, MySqlRow<'c>> for Category {
+    fn from_row(row: &MySqlRow) -> Result<Self, sqlx::Error> {
+        let id: i32 = row.try_get("id")?;
+        let parent_id: i32 = row.try_get("parent_id")?;
+        let category_name: String = row.try_get("category_name")?;
+        Ok(Category {
+            id,
+            parent_id,
+            category_name,
+            parent_category_name: None,
+        })
+    }
+}
+
 #[derive(Serialize)]
 pub(crate) struct ResNewItems {
     #[serde(skip_serializing_if = "Option::is_none")]

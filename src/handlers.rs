@@ -4,6 +4,7 @@ use crate::models::{
 };
 use crate::AppState;
 use anyhow::Result as AnyhowResult;
+use async_recursion::async_recursion;
 use serde::Deserialize;
 use sqlx::mysql::MySqlQueryAs;
 use sqlx::MySqlPool;
@@ -184,6 +185,13 @@ async fn get_user_simple_by_id(conn: &MySqlPool, user_id: i64) -> AnyhowResult<U
     let user: User = sqlx::query_as(
         r"
         SELECT
+            id,
+            account_name,
+            hashed_password,
+            address,
+            num_sell_items,
+            last_bump,
+            created_at
         FROM `users`
         WHERE `id` = ?
         ",
@@ -195,8 +203,29 @@ async fn get_user_simple_by_id(conn: &MySqlPool, user_id: i64) -> AnyhowResult<U
     Ok(user.into())
 }
 
+#[async_recursion]
 async fn get_category_by_id(conn: &MySqlPool, category_id: i32) -> AnyhowResult<Category> {
-    todo!()
+    let mut category: Category = sqlx::query_as(
+        r"
+        SELECT
+            id,
+            parent_id,
+            category_name
+        FROM `categories`
+        WHERE `id` = ?
+        ",
+    )
+    .bind(category_id)
+    .fetch_one(conn)
+    .await?;
+    if category.parent_id != 0 {
+        get_category_by_id(conn, category.parent_id)
+            .await
+            .map(|parent_category| {
+                category.parent_category_name = Some(parent_category.category_name);
+            });
+    }
+    Ok(category)
 }
 
 fn get_image_url(image_name: String) -> String {
