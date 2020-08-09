@@ -25,7 +25,26 @@ async fn main() -> Result<()> {
 
     let mut app = tide::with_state(state);
     // API
-    // TODO
+    app.at("/initialize").post(handlers::post_initialize);
+    app.at("/new_items.json").get(handlers::get_new_items);
+    app.at("/new_items/:root_category_id.json")
+        .get(handlers::get_root_category_id);
+    app.at("users/transactions.json")
+        .get(handlers::get_transactions);
+    app.at("/items/:item_id.json").get(handlers::get_item_id);
+    app.at("/items/edit").post(handlers::post_item_edit);
+    app.at("/buy").post(handlers::post_buy);
+    app.at("/sell").post(handlers::post_sell);
+    app.at("/ship").post(handlers::post_ship);
+    app.at("/ship_done").post(handlers::post_ship_done);
+    app.at("/complete").post(handlers::post_complete);
+    app.at("/transactions/:transaction_evidence_id.png")
+        .get(handlers::get_qr_code);
+    app.at("/bump").post(handlers::post_bump);
+    app.at("/settings").get(handlers::get_settings);
+    app.at("/login").post(handlers::post_login);
+    app.at("/register").post(handlers::post_register);
+    app.at("/reports.json").get(handlers::get_reports);
 
     // Frontend
     app.at("/").get(handlers::get_index);
