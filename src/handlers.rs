@@ -263,7 +263,8 @@ pub(crate) async fn get_assets(req: Request) -> TideResult<Body> {
     file_path.push("public");
     file_path.push(path);
 
-    // TODO: return 404 if the file does not exist
-    let body = Body::from_file(&file_path).await?;
+    let body = Body::from_file(&file_path)
+        .await
+        .map_err(with_status(StatusCode::NotFound))?;
     Ok(body)
 }
