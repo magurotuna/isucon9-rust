@@ -1,5 +1,6 @@
 use std::env;
 use anyhow::{Result, Context};
+use async_std::prelude::*;
 
 mod consts {
     use std::time::Duration;
@@ -28,29 +29,36 @@ mod consts {
     pub(crate) const TRANSACTION_EVIDENCE_STATUS_WAIT_DONE: &str = "wait_done";
     pub(crate) const TRANSACTION_EVIDENCE_STATUS_DONE: &str = "done";
 
-    pub(crate) const ShippingsStatusInitial: &str = "initial";
-    pub(crate) const ShippingsStatusWaitPickup: &str = "wait_pickup";
-    pub(crate) const ShippingsStatusShipping: &str = "shipping";
-    pub(crate) const ShippingsStatusDone: &str = "done";
+    pub(crate) const SHIPPINGS_STATUS_INITIAL: &str = "initial";
+    pub(crate) const SHIPPINGS_STATUS_WAIT_PICKUP: &str = "wait_pickup";
+    pub(crate) const SHIPPINGS_STATUS_SHIPPING: &str = "shipping";
+    pub(crate) const SHIPPINGS_STATUS_DONE: &str = "done";
 
-    pub(crate) const BumpChargeSeconds: Duration = Duration::from_secs(3);
+    pub(crate) const BUMP_HARGE_SECONDS: Duration = Duration::from_secs(3);
 
-    pub(crate) const ItemsPerPage: i32 = 48;
-    pub(crate) const TransactionsPerPage: i32 = 10;
+    pub(crate) const ITEMS_PER_PAGE: i32 = 48;
+    pub(crate) const TRANSACTION_PER_PAGE: i32 = 10;
 
-    pub(crate) const BcryptCost: i32 = 10;
+    pub(crate) const BCRYPT_COST: i32 = 10;
 }
 
-fn main() -> Result<()> {
+#[async_std::main]
+async fn main() -> Result<()> {
     env_logger::init();
 
-    let host = env::var("MYSQL_HOST").unwrap_or("127.0.0.1".to_string());
-    let port = env::var("MYSQL_PORT").unwrap_or("3306".to_string());
+    let host = env::var("MYSQL_HOST").unwrap_or_else(|_| "127.0.0.1".to_string());
+    let port = env::var("MYSQL_PORT").unwrap_or_else(|_| "3306".to_string());
     port.parse::<i32>().context("failed to read DB port number from an environment variable MYSQL_PORT.")?;
-    let user = env::var("MYSQL_USER").unwrap_or("isucari".to_string());
-    let dbname = env::var("MYSQL_DBNAME").unwrap_or("isucari".to_string());
-    let password = env::var("MYSQL_PASS").unwrap_or("isucari".to_string());
+    let user = env::var("MYSQL_USER").unwrap_or_else(|_| "isucari".to_string());
+    let dbname = env::var("MYSQL_DBNAME").unwrap_or_else(|_| "isucari".to_string());
+    let password = env::var("MYSQL_PASS").unwrap_or_else(|_| "isucari".to_string());
 
     let dsn = format!("{}:{}@tcp({}:{})/{}?charset=utf8mb4&parseTime=true&loc=Local", user, password, host, port, dbname);
+    let conn = connect(&dsn).await?;
     Ok(())
+}
+
+async fn connect(url: &str) -> Result<sqlx::MySqlPool> {
+    let pool = sqlx::Pool::new(url).await?;
+    Ok(pool)
 }
