@@ -19,7 +19,7 @@ async fn main() -> Result<()> {
     let password = env::var("MYSQL_PASS").unwrap_or_else(|_| "isucari".to_string());
 
     let dsn = format!(
-        "{}:{}@tcp({}:{})/{}?charset=utf8mb4&parseTime=true&loc=Local",
+        "mysql://{}:{}@{}:{}/{}?charset=utf8mb4&parseTime=true&loc=Local",
         user, password, host, port, dbname
     );
     let conn = connect(&dsn).await?;

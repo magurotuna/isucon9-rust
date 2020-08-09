@@ -25,7 +25,7 @@ pub(crate) async fn post_initialize(mut req: Request) -> Result<Body> {
         .map_err(with_status(StatusCode::BadRequest))?;
 
     {
-        let output = Command::new("../sql/init.sh")
+        let output = Command::new("./sql/init.sh")
             .output()
             .map_err(with_status(StatusCode::InternalServerError))?;
         let stdout = io::stdout();
