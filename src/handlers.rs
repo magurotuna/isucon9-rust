@@ -384,7 +384,36 @@ pub(crate) async fn get_new_category_items(req: Request) -> TideResult<Body> {
 }
 
 pub(crate) async fn get_transactions(req: Request) -> TideResult<String> {
-    todo!()
+    let user = get_user(&req).await?;
+    // TODO WIP
+    Ok("a".to_string())
+}
+
+async fn get_user(req: &Request) -> TideResult<User> {
+    let session = req.session();
+    let user_id: String = session
+        .get("user_id")
+        .context("no session")
+        .map_err(with_status(StatusCode::NotFound))?;
+    let conn = &req.state().conn;
+    let user: User = sqlx::query_as(
+        r"
+        SELECT 
+            id,
+            account_name,
+            hashed_password,
+            address,
+            num_sell_items,
+            last_bump,
+            created_at
+        FROM `users`
+        WHERE `id` = ?
+        ",
+    )
+    .bind(user_id)
+    .fetch_one(conn)
+    .await?;
+    Ok(user)
 }
 
 pub(crate) async fn get_item_id(req: Request) -> TideResult<String> {
