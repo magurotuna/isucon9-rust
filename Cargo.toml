@@ -9,7 +9,7 @@ edition = "2018"
 [dependencies]
 log = "0.4"
 anyhow = "1.0.32"
-sqlx = { version = "0.3.5", default-features = false, features = [ "runtime-async-std", "mysql", "chrono" ] }
+sqlx = { version = "0.4.0-beta.1", default-features = false, features = [ "runtime-async-std", "mysql", "chrono" ] }
 async-std = { version = "1.6.2", features = ["attributes"] }
 tide = "0.13.0"
 serde = { version = "1.0.114", features = ["derive"] }

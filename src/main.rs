@@ -78,7 +78,7 @@ async fn main() -> Result<()> {
 }
 
 async fn connect(url: &str) -> Result<sqlx::MySqlPool> {
-    let pool = sqlx::Pool::new(url).await?;
+    let pool = sqlx::Pool::connect(url).await?;
     Ok(pool)
 }
 
