@@ -1,11 +1,10 @@
 use crate::consts;
 use crate::models::{
-    APIShipmentStatusReq, APIShipmentStatusRes, Category, Item, ItemDetail, ItemSimple,
+    APIShipmentStatusReq, APIShipmentStatusRes, Category, Config, Item, ItemDetail, ItemSimple,
     ReqInitialize, ResInitialize, ResNewItems, ResTransactions, Shipping, TransactionEvidence,
     User, UserSimple,
 };
 use crate::AppState;
-use anyhow::{Context, Result as AnyhowResult};
 use async_recursion::async_recursion;
 use regex::Regex;
 use serde::Deserialize;
@@ -15,7 +14,7 @@ use sqlx::Row as _;
 use std::env;
 use std::io::{self, Write};
 use std::process::Command;
-use tide::{Body, Result as TideResult, StatusCode};
+use tide::{Body, Result, StatusCode};
 
 type Request = tide::Request<AppState>;
 
@@ -30,7 +29,7 @@ where
     }
 }
 
-pub(crate) async fn post_initialize(mut req: Request) -> TideResult<Body> {
+pub(crate) async fn post_initialize(mut req: Request) -> Result<Body> {
     let body: ReqInitialize = req
         .body_json()
         .await
@@ -79,7 +78,7 @@ pub(crate) async fn post_initialize(mut req: Request) -> TideResult<Body> {
     Ok(Body::from_json(&res)?)
 }
 
-pub(crate) async fn get_new_items(req: Request) -> TideResult<Body> {
+pub(crate) async fn get_new_items(req: Request) -> Result<Body> {
     #[derive(Deserialize, Default)]
     #[serde(default)]
     struct Query {
@@ -188,9 +187,9 @@ pub(crate) async fn get_new_items(req: Request) -> TideResult<Body> {
     Ok(Body::from_json(&res)?)
 }
 
-async fn get_user_simple_by_id<E>(executor: &mut E, user_id: u64) -> AnyhowResult<UserSimple>
+async fn get_user_simple_by_id<E>(executor: &mut E, user_id: u64) -> Result<UserSimple>
 where
-    for<'a> &'a mut E: Send + Executor<'a, Database = MySql>,
+    for<'a> &'a mut E: Executor<'a, Database = MySql>,
 {
     let user: User = sqlx::query_as(
         r"
@@ -214,10 +213,10 @@ where
 }
 
 #[async_recursion]
-async fn get_category_by_id<E>(executor: &mut E, category_id: u32) -> AnyhowResult<Category>
+async fn get_category_by_id<E>(executor: &mut E, category_id: u32) -> Result<Category>
 where
     E: Send,
-    for<'e> &'e mut E: Send + Executor<'e, Database = MySql>,
+    for<'e> &'e mut E: Executor<'e, Database = MySql>,
 {
     let mut category: Category = sqlx::query_as(
         r"
@@ -245,15 +244,14 @@ fn get_image_url(image_name: String) -> String {
     format!("/upload/{}", image_name)
 }
 
-pub(crate) async fn get_new_category_items(req: Request) -> TideResult<Body> {
+pub(crate) async fn get_new_category_items(req: Request) -> Result<Body> {
     let re = Regex::new(r"^(.+)\.json$").unwrap();
     let param: String = req.param("root_category_id.json")?;
     let root_category_id = re
         .captures(param.as_str())
         .and_then(|cap| cap.get(1))
         .and_then(|it| it.as_str().parse::<u32>().ok())
-        .context("incorrect category id")
-        .map_err(with_status(StatusCode::BadRequest))?;
+        .ok_or_else(|| tide::Error::from_str(StatusCode::BadRequest, "incorrect category id"))?;
 
     let mut conn = req.state().conn.acquire().await?;
 
@@ -393,7 +391,7 @@ pub(crate) async fn get_new_category_items(req: Request) -> TideResult<Body> {
     Ok(Body::from_json(&res)?)
 }
 
-pub(crate) async fn get_transactions(req: Request) -> TideResult<Body> {
+pub(crate) async fn get_transactions(req: Request) -> Result<Body> {
     let user = get_user(&req).await?;
 
     #[derive(Deserialize, Default)]
@@ -564,7 +562,7 @@ pub(crate) async fn get_transactions(req: Request) -> TideResult<Body> {
                     _ => tide::Error::new(StatusCode::InternalServerError, e),
                 })?;
                 let ssr = api_shipment_status(
-                    get_shipment_service_url(),
+                    get_shipment_service_url(&mut tx).await,
                     APIShipmentStatusReq {
                         reserve_id: shipping.reserve_id,
                     },
@@ -600,12 +598,11 @@ pub(crate) async fn get_transactions(req: Request) -> TideResult<Body> {
     Ok(Body::from_json(&res)?)
 }
 
-async fn get_user(req: &Request) -> TideResult<User> {
+async fn get_user(req: &Request) -> Result<User> {
     let session = req.session();
     let user_id: String = session
         .get("user_id")
-        .context("no session")
-        .map_err(with_status(StatusCode::NotFound))?;
+        .ok_or_else(|| tide::Error::from_str(StatusCode::NotFound, "no session"))?;
     let conn = &req.state().conn;
     let user: User = sqlx::query_as(
         r"
@@ -627,75 +624,99 @@ async fn get_user(req: &Request) -> TideResult<User> {
     Ok(user)
 }
 
-fn get_shipment_service_url() -> String {
-    todo!()
+async fn get_config_by_name<E>(executor: &mut E, name: impl AsRef<str>) -> Result<String>
+where
+    for<'a> &'a mut E: Executor<'a, Database = MySql>,
+{
+    let config: Config = sqlx::query_as("SELECT name, val FROM `configs` WHERE `name` = ?")
+        .bind(name.as_ref())
+        .fetch_one(executor)
+        .await?;
+
+    Ok(config.val)
+}
+
+async fn get_shipment_service_url<E>(executor: &mut E) -> String
+where
+    for<'a> &'a mut E: Executor<'a, Database = MySql>,
+{
+    get_config_by_name(executor, "payment_service_url")
+        .await
+        .unwrap_or(consts::DEFAULT_SHIPMENT_SERVICE_URL.to_string())
 }
 
 async fn api_shipment_status(
     shipment_url: String,
     param: APIShipmentStatusReq,
-) -> AnyhowResult<APIShipmentStatusRes> {
+) -> Result<APIShipmentStatusRes> {
+    let res = surf::get(format!("{}/status", shipment_url))
+        .body_json(&param)?
+        .set_header("User-Agent", consts::USER_AGENT)
+        .set_header("Authorization", consts::ISUCARI_API_TOKEN)
+        .recv_json()
+        .await?;
+
+    Ok(res)
+}
+
+pub(crate) async fn get_item_id(req: Request) -> Result<String> {
     todo!()
 }
 
-pub(crate) async fn get_item_id(req: Request) -> TideResult<String> {
+pub(crate) async fn post_item_edit(req: Request) -> Result<String> {
     todo!()
 }
 
-pub(crate) async fn post_item_edit(req: Request) -> TideResult<String> {
+pub(crate) async fn post_buy(req: Request) -> Result<String> {
     todo!()
 }
 
-pub(crate) async fn post_buy(req: Request) -> TideResult<String> {
+pub(crate) async fn post_sell(req: Request) -> Result<String> {
     todo!()
 }
 
-pub(crate) async fn post_sell(req: Request) -> TideResult<String> {
+pub(crate) async fn post_ship(req: Request) -> Result<String> {
     todo!()
 }
 
-pub(crate) async fn post_ship(req: Request) -> TideResult<String> {
+pub(crate) async fn post_ship_done(req: Request) -> Result<String> {
     todo!()
 }
 
-pub(crate) async fn post_ship_done(req: Request) -> TideResult<String> {
+pub(crate) async fn post_complete(req: Request) -> Result<String> {
     todo!()
 }
 
-pub(crate) async fn post_complete(req: Request) -> TideResult<String> {
+pub(crate) async fn get_qr_code(req: Request) -> Result<String> {
     todo!()
 }
 
-pub(crate) async fn get_qr_code(req: Request) -> TideResult<String> {
+pub(crate) async fn post_bump(req: Request) -> Result<String> {
     todo!()
 }
 
-pub(crate) async fn post_bump(req: Request) -> TideResult<String> {
+pub(crate) async fn get_settings(req: Request) -> Result<String> {
     todo!()
 }
 
-pub(crate) async fn get_settings(req: Request) -> TideResult<String> {
+pub(crate) async fn post_login(req: Request) -> Result<String> {
     todo!()
 }
 
-pub(crate) async fn post_login(req: Request) -> TideResult<String> {
+pub(crate) async fn post_register(req: Request) -> Result<String> {
     todo!()
 }
 
-pub(crate) async fn post_register(req: Request) -> TideResult<String> {
+pub(crate) async fn get_reports(req: Request) -> Result<String> {
     todo!()
 }
 
-pub(crate) async fn get_reports(req: Request) -> TideResult<String> {
-    todo!()
-}
-
-pub(crate) async fn get_index(_req: Request) -> TideResult<&'static str> {
+pub(crate) async fn get_index(_req: Request) -> Result<&'static str> {
     let html = include_str!("../public/index.html");
     Ok(html)
 }
 
-pub(crate) async fn get_assets(req: Request) -> TideResult<Body> {
+pub(crate) async fn get_assets(req: Request) -> Result<Body> {
     let mut file_path = env::current_dir()?;
     let path: String = req.param("path")?;
     file_path.push("public");

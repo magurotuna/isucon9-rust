@@ -36,3 +36,6 @@ pub(crate) const ITEMS_PER_PAGE: i32 = 48;
 pub(crate) const TRANSACTION_PER_PAGE: i32 = 10;
 
 pub(crate) const BCRYPT_COST: i32 = 10;
+
+pub(crate) const USER_AGENT: &str = "isucon9-qualify-webapp";
+pub(crate) const ISUCARI_API_TOKEN: &str = "Bearer 75ugk2m37a750fwir5xr-22l6h4wmue1bwrubzwd0";

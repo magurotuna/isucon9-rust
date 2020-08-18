@@ -17,12 +17,12 @@ pub(crate) struct ResInitialize {
     pub(crate) language: String,
 }
 
-#[derive(Deserialize)]
+#[derive(Serialize)]
 pub(crate) struct APIShipmentStatusReq {
     pub(crate) reserve_id: String,
 }
 
-#[derive(Serialize)]
+#[derive(Deserialize)]
 pub(crate) struct APIShipmentStatusRes {
     pub(crate) status: String,
     pub(crate) reserve_time: u64,
@@ -32,6 +32,12 @@ pub(crate) struct APIShipmentStatusRes {
 pub(crate) struct ResTransactions {
     pub(crate) has_next: bool,
     pub(crate) items: Vec<ItemDetail>,
+}
+
+#[derive(Serialize, FromRow)]
+pub(crate) struct Config {
+    pub(crate) name: String,
+    pub(crate) val: String,
 }
 
 #[derive(Serialize)]
