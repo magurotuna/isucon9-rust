@@ -791,51 +791,51 @@ pub(crate) async fn get_item(req: Request) -> Result<Body> {
     Ok(Body::from_json(&item_detail)?)
 }
 
-pub(crate) async fn post_item_edit(req: Request) -> Result<String> {
+pub(crate) async fn post_item_edit(req: Request) -> Result<Body> {
     todo!()
 }
 
-pub(crate) async fn post_buy(req: Request) -> Result<String> {
+pub(crate) async fn post_buy(req: Request) -> Result<Body> {
     todo!()
 }
 
-pub(crate) async fn post_sell(req: Request) -> Result<String> {
+pub(crate) async fn post_sell(req: Request) -> Result<Body> {
     todo!()
 }
 
-pub(crate) async fn post_ship(req: Request) -> Result<String> {
+pub(crate) async fn post_ship(req: Request) -> Result<Body> {
     todo!()
 }
 
-pub(crate) async fn post_ship_done(req: Request) -> Result<String> {
+pub(crate) async fn post_ship_done(req: Request) -> Result<Body> {
     todo!()
 }
 
-pub(crate) async fn post_complete(req: Request) -> Result<String> {
+pub(crate) async fn post_complete(req: Request) -> Result<Body> {
     todo!()
 }
 
-pub(crate) async fn get_qr_code(req: Request) -> Result<String> {
+pub(crate) async fn get_qr_code(req: Request) -> Result<Body> {
     todo!()
 }
 
-pub(crate) async fn post_bump(req: Request) -> Result<String> {
+pub(crate) async fn post_bump(req: Request) -> Result<Body> {
     todo!()
 }
 
-pub(crate) async fn get_settings(req: Request) -> Result<String> {
+pub(crate) async fn get_settings(req: Request) -> Result<Body> {
     todo!()
 }
 
-pub(crate) async fn post_login(req: Request) -> Result<String> {
+pub(crate) async fn post_login(req: Request) -> Result<Body> {
     todo!()
 }
 
-pub(crate) async fn post_register(req: Request) -> Result<String> {
+pub(crate) async fn post_register(req: Request) -> Result<Body> {
     todo!()
 }
 
-pub(crate) async fn get_reports(req: Request) -> Result<String> {
+pub(crate) async fn get_reports(req: Request) -> Result<Body> {
     todo!()
 }
 
