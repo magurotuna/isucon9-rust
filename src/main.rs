@@ -42,7 +42,7 @@ async fn main() -> Result<()> {
         .get(handlers::get_new_category_items);
     app.at("users/transactions.json")
         .get(handlers::get_transactions);
-    app.at("/items/:item_id.json").get(handlers::get_item_id);
+    app.at("/items/:item_id.json").get(handlers::get_item);
     app.at("/items/edit").post(handlers::post_item_edit);
     app.at("/buy").post(handlers::post_buy);
     app.at("/sell").post(handlers::post_sell);

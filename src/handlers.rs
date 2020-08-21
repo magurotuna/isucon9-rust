@@ -6,6 +6,7 @@ use crate::models::{
 };
 use crate::AppState;
 use async_recursion::async_recursion;
+use once_cell::sync::Lazy;
 use regex::Regex;
 use serde::Deserialize;
 use sqlx::mysql::{MySql, MySqlRow};
@@ -17,6 +18,8 @@ use std::process::Command;
 use tide::{Body, Result, StatusCode};
 
 type Request = tide::Request<AppState>;
+
+static JSON_PATH_PARAM_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"^(.+)\.json$").unwrap());
 
 fn with_status<E>(status_code: StatusCode) -> impl FnOnce(E) -> tide::Error
 where
@@ -245,9 +248,8 @@ fn get_image_url(image_name: String) -> String {
 }
 
 pub(crate) async fn get_new_category_items(req: Request) -> Result<Body> {
-    let re = Regex::new(r"^(.+)\.json$").unwrap();
     let param: String = req.param("root_category_id.json")?;
-    let root_category_id = re
+    let root_category_id = JSON_PATH_PARAM_RE
         .captures(param.as_str())
         .and_then(|cap| cap.get(1))
         .and_then(|it| it.as_str().parse::<u32>().ok())
@@ -659,8 +661,134 @@ async fn api_shipment_status(
     Ok(res)
 }
 
-pub(crate) async fn get_item_id(req: Request) -> Result<String> {
-    todo!()
+pub(crate) async fn get_item(req: Request) -> Result<Body> {
+    let param: String = req.param("item_id.json")?;
+    let item_id = JSON_PATH_PARAM_RE
+        .captures(param.as_str())
+        .and_then(|cap| cap.get(1))
+        .and_then(|it| it.as_str().parse::<u32>().ok())
+        .ok_or_else(|| tide::Error::from_str(StatusCode::BadRequest, "incorrect item id"))?;
+
+    let user = get_user(&req).await?;
+
+    let mut conn = req.state().conn.acquire().await?;
+    let item: Item = sqlx::query_as(
+        r"
+        SELECT
+            id,
+            seller_id,
+            buyer_id,
+            status,
+            name,
+            price,
+            description,
+            image_name,
+            category_id,
+            created_at,
+            updated_at
+        FROM `items`
+        WHERE `id` = ?
+        ",
+    )
+    .bind(item_id)
+    .fetch_one(&mut conn)
+    .await
+    .map_err(|e| match e {
+        sqlx::Error::RowNotFound => tide::Error::new(StatusCode::NotFound, e),
+        _ => tide::Error::new(StatusCode::InternalServerError, e),
+    })?;
+
+    let category = get_category_by_id(&mut conn, item.category_id).await?;
+    let seller = get_user_simple_by_id(&mut conn, item.seller_id).await?;
+
+    let mut item_detail = ItemDetail {
+        id: item.id,
+        seller_id: item.seller_id,
+        seller,
+        buyer_id: None,
+        buyer: None,
+        status: item.status,
+        name: item.name,
+        price: item.price,
+        description: item.description,
+        image_url: get_image_url(item.image_name),
+        category_id: item.category_id,
+        transaction_evidence_id: None,
+        transaction_evidence_status: None,
+        shipping_status: None,
+        category,
+        created_at: item.created_at,
+    };
+
+    if (user.id == item.seller_id || user.id == item.buyer_id) && item.buyer_id != 0 {
+        let buyer = get_user_simple_by_id(&mut conn, item.buyer_id).await?;
+        item_detail.buyer_id = Some(item.buyer_id);
+        item_detail.buyer = Some(buyer);
+
+        let transaction_evidence: sqlx::Result<TransactionEvidence> = sqlx::query_as(
+            r"
+            SELECT
+                id,
+                seller_id,
+                buyer_id,
+                status,
+                item_id,
+                item_name,
+                item_price,
+                item_description,
+                item_category_id,
+                item_root_category_id,
+                created_at,
+                updated_at
+            FROM `transaction_evidence`
+            WHERE `item_id` = ?
+            ",
+        )
+        .bind(item.id)
+        .fetch_one(&mut conn)
+        .await;
+
+        match transaction_evidence {
+            Err(sqlx::Error::RowNotFound) => {}
+            Err(e) => {
+                return Err(tide::Error::new(StatusCode::NotFound, e));
+            }
+            Ok(t) => {
+                let shipping: Shipping = sqlx::query_as(
+                    r"
+                    SELECT
+                        transaction_evidence_id,
+                        status,
+                        item_name,
+                        item_id,
+                        reserve_id,
+                        reserve_time,
+                        to_address,
+                        to_name,
+                        from_address,
+                        from_name,
+                        img_binary,
+                        created_at,
+                        updated_at
+                    FROM `shippings`
+                    WHERE `transaction_evidence_id` = ?
+                    ",
+                )
+                .bind(t.id)
+                .fetch_one(&mut conn)
+                .await
+                .map_err(|e| match e {
+                    sqlx::Error::RowNotFound => tide::Error::new(StatusCode::NotFound, e),
+                    _ => tide::Error::new(StatusCode::InternalServerError, e),
+                })?;
+                item_detail.transaction_evidence_id = Some(t.id);
+                item_detail.transaction_evidence_status = Some(t.status);
+                item_detail.shipping_status = Some(shipping.status);
+            }
+        }
+    }
+
+    Ok(Body::from_json(&item_detail)?)
 }
 
 pub(crate) async fn post_item_edit(req: Request) -> Result<String> {
