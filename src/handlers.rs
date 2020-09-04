@@ -190,9 +190,9 @@ pub(crate) async fn get_new_items(req: Request) -> Result<Body> {
     Ok(Body::from_json(&res)?)
 }
 
-async fn get_user_simple_by_id<E>(executor: &mut E, user_id: u64) -> Result<UserSimple>
+async fn get_user_simple_by_id<'e, E>(executor: &'e mut E, user_id: u64) -> Result<UserSimple>
 where
-    for<'a> &'a mut E: Executor<'a, Database = MySql>,
+    &'e mut E: Executor<'e, Database = MySql>,
 {
     let user: User = sqlx::query_as(
         r"
@@ -626,9 +626,9 @@ async fn get_user(req: &Request) -> Result<User> {
     Ok(user)
 }
 
-async fn get_config_by_name<E>(executor: &mut E, name: impl AsRef<str>) -> Result<String>
+async fn get_config_by_name<'e, E>(executor: &'e mut E, name: impl AsRef<str>) -> Result<String>
 where
-    for<'a> &'a mut E: Executor<'a, Database = MySql>,
+    &'e mut E: Executor<'e, Database = MySql>,
 {
     let config: Config = sqlx::query_as("SELECT name, val FROM `configs` WHERE `name` = ?")
         .bind(name.as_ref())
@@ -638,9 +638,9 @@ where
     Ok(config.val)
 }
 
-async fn get_shipment_service_url<E>(executor: &mut E) -> String
+async fn get_shipment_service_url<'e, E>(executor: &'e mut E) -> String
 where
-    for<'a> &'a mut E: Executor<'a, Database = MySql>,
+    &'e mut E: Executor<'e, Database = MySql>,
 {
     get_config_by_name(executor, "payment_service_url")
         .await
